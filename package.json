@@ -1,0 +1,43 @@
+{
+  "name": "xhs-studio",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node server.mjs --dev",
+    "dev:lan": "node server.mjs --dev --host 0.0.0.0",
+    "build": "next build",
+    "start": "node server.mjs",
+    "start:lan": "node server.mjs --host 0.0.0.0",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "node --test tests/*.test.mjs",
+    "thumbs:backfill": "node scripts/backfill-thumbs.mjs"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "overrides": {
+    "postcss": "$postcss"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.468.0",
+    "next": "^15.5.28",
+    "playwright-core": "^1.64.1",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "swr": "^2.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^15.5.28",
+    "postcss": "^8.5.31",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2"
+  }
+}
