@@ -5,7 +5,6 @@ import type {
   Event,
   ImageAnalysis,
   Photo,
-  PlatformSnapshot,
   Post,
   PostStatus,
   Settings,
@@ -57,10 +56,6 @@ CREATE TABLE IF NOT EXISTS posts (
   published_date TEXT,
   cover_image_id TEXT,
   note TEXT NOT NULL DEFAULT '',
-  auto_publish INTEGER NOT NULL DEFAULT 0,
-  publish_error TEXT,
-  publish_attempted_at TEXT,
-  publish_attempt_count INTEGER NOT NULL DEFAULT 0,
   xhs_url TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -78,12 +73,6 @@ CREATE TABLE IF NOT EXISTS post_images (
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS platform_snapshots (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  data TEXT NOT NULL,
-  synced_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -145,8 +134,6 @@ export const DEFAULT_SETTINGS: Settings = {
   default_time: "19:30",
   posts_per_day: "1",
   auto_analyze: "1",
-  xhs_scheduler: "1",
-  xhs_headless: "1",
   campaign_enabled: "1",
   campaign_name: "有理想的创作者",
   campaign_city: "",
@@ -161,7 +148,6 @@ export const DEFAULT_SETTINGS: Settings = {
   campaign_body_min: "220",
   campaign_time: "19:30",
   campaign_auto_plan: "1",
-  campaign_auto_publish: "1",
   campaign_start_date: "",
   campaign_buffer_days: "7",
   campaign_batch_images: "30",
@@ -187,9 +173,6 @@ function createDb(): DatabaseSync {
       db.exec(`ALTER TABLE posts ADD COLUMN ${ddl}`);
     }
   };
-  addColumn("auto_publish", "auto_publish INTEGER NOT NULL DEFAULT 0");
-  addColumn("publish_error", "publish_error TEXT");
-  addColumn("publish_attempted_at", "publish_attempted_at TEXT");
   addColumn("xhs_url", "xhs_url TEXT");
   addColumn("campaign", "campaign TEXT NOT NULL DEFAULT ''");
   addColumn("event_id", "event_id TEXT");
@@ -199,10 +182,6 @@ function createDb(): DatabaseSync {
     db.exec("ALTER TABLE events ADD COLUMN publish_time TEXT NOT NULL DEFAULT '21:30'");
   }
   addColumn("published_date", "published_date TEXT");
-  addColumn(
-    "publish_attempt_count",
-    "publish_attempt_count INTEGER NOT NULL DEFAULT 0"
-  );
   const missingPublishedDate = db
     .prepare(
       "SELECT id, published_at FROM posts WHERE published_at IS NOT NULL AND published_date IS NULL"
@@ -357,12 +336,6 @@ export function postFromRow(row: Row, images: Photo[]): Post {
     publishedDate: row.published_date ? str(row.published_date) : null,
     coverImageId,
     note: str(row.note),
-    autoPublish: num(row.auto_publish) === 1,
-    publishError: row.publish_error ? str(row.publish_error) : null,
-    publishAttemptedAt: row.publish_attempted_at
-      ? str(row.publish_attempted_at)
-      : null,
-    publishAttemptCount: num(row.publish_attempt_count),
     xhsUrl: row.xhs_url ? str(row.xhs_url) : null,
     createdAt: str(row.created_at),
     updatedAt: str(row.updated_at),
@@ -465,31 +438,6 @@ export function getImageFileNames(id: string) {
     kind: (str(row.kind, "image") || "image") as Photo["kind"],
     duration: num(row.duration),
   };
-}
-
-export function getPlatformSnapshot(): {
-  snapshot: PlatformSnapshot | null;
-  syncedAt: string | null;
-} {
-  const row = db
-    .prepare("SELECT data, synced_at FROM platform_snapshots WHERE id = 1")
-    .get() as Row | undefined;
-  if (!row) return { snapshot: null, syncedAt: null };
-  try {
-    return {
-      snapshot: JSON.parse(str(row.data)) as PlatformSnapshot,
-      syncedAt: str(row.synced_at),
-    };
-  } catch {
-    return { snapshot: null, syncedAt: null };
-  }
-}
-
-export function savePlatformSnapshot(snapshot: PlatformSnapshot) {
-  db.prepare(
-    `INSERT INTO platform_snapshots (id, data, synced_at) VALUES (1, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET data = excluded.data, synced_at = excluded.synced_at`
-  ).run(JSON.stringify(snapshot), snapshot.syncedAt);
 }
 
 export function insertImage(input: {
@@ -662,7 +610,6 @@ export function createPost(input: {
   scheduledTime?: string | null;
   coverImageId?: string | null;
   note?: string;
-  autoPublish?: boolean;
   images?: string[];
 }): Post {
   const id = crypto.randomUUID();
@@ -674,8 +621,8 @@ export function createPost(input: {
   tx(() => {
     db.prepare(
       `INSERT INTO posts
-        (id, theme, title, body, hashtags, campaign, event_id, event_name, status, scheduled_date, scheduled_time, cover_image_id, note, auto_publish, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (id, theme, title, body, hashtags, campaign, event_id, event_name, status, scheduled_date, scheduled_time, cover_image_id, note, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       input.theme || "",
@@ -690,7 +637,6 @@ export function createPost(input: {
       input.scheduledTime || null,
       cover,
       input.note || "",
-      input.autoPublish ? 1 : 0,
       now,
       now
     );
@@ -716,9 +662,6 @@ export function updatePost(
     publishedAt?: string | null;
     coverImageId?: string | null;
     note?: string;
-    autoPublish?: boolean;
-    publishError?: string | null;
-    publishAttemptedAt?: string | null;
     xhsUrl?: string | null;
     images?: string[];
   }
@@ -775,18 +718,6 @@ export function updatePost(
     sets.push("note = ?");
     params.push(patch.note);
   }
-  if (patch.autoPublish !== undefined) {
-    sets.push("auto_publish = ?");
-    params.push(patch.autoPublish ? 1 : 0);
-  }
-  if (patch.publishError !== undefined) {
-    sets.push("publish_error = ?");
-    params.push(patch.publishError);
-  }
-  if (patch.publishAttemptedAt !== undefined) {
-    sets.push("publish_attempted_at = ?");
-    params.push(patch.publishAttemptedAt);
-  }
   if (patch.xhsUrl !== undefined) {
     sets.push("xhs_url = ?");
     params.push(patch.xhsUrl);
@@ -818,11 +749,11 @@ export function setPostPublished(id: string, published: boolean): Post | null {
   const today = todayStr();
   if (published) {
     db.prepare(
-      "UPDATE posts SET status = 'published', published_at = ?, published_date = ?, scheduled_date = COALESCE(scheduled_date, ?), publish_error = NULL, publish_attempt_count = 0, updated_at = ? WHERE id = ?"
+      "UPDATE posts SET status = 'published', published_at = ?, published_date = ?, scheduled_date = COALESCE(scheduled_date, ?), updated_at = ? WHERE id = ?"
     ).run(new Date().toISOString(), today, today, new Date().toISOString(), id);
   } else {
     db.prepare(
-      "UPDATE posts SET status = 'ready', published_at = NULL, published_date = NULL, xhs_url = NULL, publish_attempt_count = 0, updated_at = ? WHERE id = ?"
+      "UPDATE posts SET status = 'ready', published_at = NULL, published_date = NULL, xhs_url = NULL, updated_at = ? WHERE id = ?"
     ).run(new Date().toISOString(), id);
   }
   recomputeImageStatuses();
@@ -832,57 +763,6 @@ export function setPostPublished(id: string, published: boolean): Post | null {
 export function deletePost(id: string) {
   db.prepare("DELETE FROM posts WHERE id = ?").run(id);
   recomputeImageStatuses();
-}
-
-export function recordPublishSuccess(id: string, url: string | null): Post | null {
-  const now = new Date().toISOString();
-  db.prepare(
-    `UPDATE posts SET status = 'published', published_at = ?, published_date = ?, scheduled_date = COALESCE(scheduled_date, ?),
-       xhs_url = ?, publish_error = NULL, publish_attempted_at = ?, publish_attempt_count = 0, updated_at = ? WHERE id = ?`
-  ).run(now, todayStr(), todayStr(), url, now, now, id);
-  recomputeImageStatuses();
-  return getPost(id);
-}
-
-export function recordPublishFailure(id: string, error: string): Post | null {
-  const now = new Date().toISOString();
-  db.prepare(
-    "UPDATE posts SET publish_error = ?, publish_attempted_at = ?, publish_attempt_count = publish_attempt_count + 1, updated_at = ? WHERE id = ?"
-  ).run(error.slice(0, 2000), now, now, id);
-  return getPost(id);
-}
-
-export function listDueAutoPosts(): Post[] {
-  const rows = db
-    .prepare(
-      "SELECT * FROM posts WHERE status = 'ready' AND auto_publish = 1 AND scheduled_date IS NOT NULL AND publish_attempt_count < 3"
-    )
-    .all() as Row[];
-  const now = Date.now();
-  const fallbackTime = getSettings().default_time || "19:30";
-  return rows
-    .map((row) => postFromRow(row, imagesForPost(str(row.id))))
-    .filter((post) => {
-      if (!post.scheduledDate) return false;
-      const at = parseDateStr(post.scheduledDate);
-      const [hour, minute] = (post.scheduledTime || fallbackTime)
-        .split(":")
-        .map(Number);
-      at.setHours(hour || 0, minute || 0, 0, 0);
-      if (at.getTime() > now) return false;
-      if (
-        post.publishAttemptedAt &&
-        now - new Date(post.publishAttemptedAt).getTime() < 15 * 60 * 1000
-      ) {
-        return false;
-      }
-      return true;
-    })
-    .sort((a, b) =>
-      `${a.scheduledDate}${a.scheduledTime || ""}`.localeCompare(
-        `${b.scheduledDate}${b.scheduledTime || ""}`
-      )
-    );
 }
 
 export function calendarPosts(month: string): Post[] {
@@ -1445,7 +1325,7 @@ export function stats() {
   const postCounts = db
     .prepare("SELECT status, COUNT(*) AS c FROM posts GROUP BY status")
     .all() as Row[];
-  const posts = { total: 0, draft: 0, ready: 0, published: 0, publishedThisMonth: 0, failed: 0, dueToday: 0, overdue: 0, unscheduled: 0 };
+  const posts = { total: 0, draft: 0, ready: 0, published: 0, publishedThisMonth: 0, dueToday: 0, overdue: 0, unscheduled: 0 };
   for (const row of postCounts) {
     const key = str(row.status) as "draft" | "ready" | "published";
     if (key in posts) posts[key] = num(row.c);
@@ -1461,15 +1341,6 @@ export function stats() {
   );
 
   const today = todayStr();
-  const failed = num(
-    (
-      db
-        .prepare(
-          "SELECT COUNT(*) AS c FROM posts WHERE status = 'ready' AND publish_error IS NOT NULL"
-        )
-        .get() as Row
-    ).c
-  );
   const dueToday = num(
     (
       db
@@ -1513,7 +1384,6 @@ export function stats() {
   const recent = recentRows.map((row) => postFromRow(row, imagesForPost(str(row.id))));
 
   const unanalyzed = images.total - images.analyzed;
-  posts.failed = failed;
   posts.dueToday = dueToday;
   posts.overdue = overdue;
   posts.unscheduled = unscheduled;

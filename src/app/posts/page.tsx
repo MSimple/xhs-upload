@@ -5,6 +5,7 @@ import Link from "next/link";
 import useSWR from "swr";
 import {
   CalendarDays,
+  CheckCircle2,
   FileText,
   Images,
   Megaphone,
@@ -13,6 +14,7 @@ import {
   Search,
   Send,
   Sparkles,
+  Undo2,
   Wand2,
   X,
 } from "lucide-react";
@@ -47,7 +49,7 @@ function displayDate(post: Post) {
 
 export default function PostsPage() {
   const toast = useToast();
-  const { data, isLoading } = useSWR<{ posts: Post[] }>("/api/posts", fetcher);
+  const { data, isLoading, mutate } = useSWR<{ posts: Post[] }>("/api/posts", fetcher);
   const posts = useMemo(() => data?.posts || [], [data]);
 
   const [tab, setTab] = useState<Filter>("all");
@@ -59,6 +61,7 @@ export default function PostsPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [markingId, setMarkingId] = useState<string | null>(null);
 
   useEffect(() => {
     const status = new URLSearchParams(window.location.search).get("status");
@@ -111,6 +114,48 @@ export default function PostsPage() {
   function openPost(id: string) {
     setPostId(id);
     setDetailOpen(true);
+  }
+
+  async function togglePublished(post: Post, event: React.MouseEvent) {
+    event.stopPropagation();
+    if (markingId) return;
+    if (post.status === "published") {
+      if (!window.confirm("撤回本地已发布标记？小红书上的笔记不会被删除，配图会重新变为可用。")) return;
+      setMarkingId(post.id);
+      try {
+        await api(`/api/posts/${post.id}/publish`, {
+          method: "POST",
+          body: JSON.stringify({ published: false }),
+        });
+        await mutate();
+        await refreshAll();
+        toast("已撤回发布标记", "success");
+      } catch (error) {
+        toast(error instanceof Error ? error.message : "操作失败", "error");
+      } finally {
+        setMarkingId(null);
+      }
+      return;
+    }
+    const url = window.prompt(
+      "已经在小红书手动发布了吗？可粘贴笔记链接（留空也可以）",
+      post.xhsUrl || ""
+    );
+    if (url === null) return;
+    setMarkingId(post.id);
+    try {
+      await api(`/api/posts/${post.id}/publish`, {
+        method: "POST",
+        body: JSON.stringify({ published: true, url: url.trim() || undefined }),
+      });
+      await mutate();
+      await refreshAll();
+      toast("已标记为手动发布，配图已锁定", "success");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "标记失败", "error");
+    } finally {
+      setMarkingId(null);
+    }
   }
 
   async function createBlank() {
@@ -318,14 +363,25 @@ export default function PostsPage() {
                     )}
                   </div>
                 )}
-                <div className="mt-3 flex items-center justify-between border-t border-line pt-3 text-[10px] text-muted">
-                  <span className="flex items-center gap-1">
+                <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-3 text-[10px] text-muted">
+                  <span className="flex min-w-0 items-center gap-1">
                     <CalendarDays size={11} /> {displayDate(post)}
                   </span>
-                  <span className="flex items-center gap-1 truncate">
-                    <FileText size={11} />
-                    {post.theme || "未设主题"}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={(event) => togglePublished(post, event)}
+                    disabled={markingId === post.id}
+                    className="flex shrink-0 items-center gap-1 rounded-full border border-line bg-white px-2.5 py-1 text-[10px] font-medium text-ink transition hover:border-brand/30 hover:bg-brand-soft/40 hover:text-brand disabled:opacity-50"
+                  >
+                    {markingId === post.id ? (
+                      <Spinner size={11} />
+                    ) : post.status === "published" ? (
+                      <Undo2 size={11} />
+                    ) : (
+                      <CheckCircle2 size={11} />
+                    )}
+                    {post.status === "published" ? "撤回标记" : "标记已发布"}
+                  </button>
                 </div>
               </div>
             </div>

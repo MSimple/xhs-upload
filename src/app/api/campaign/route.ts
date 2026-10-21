@@ -41,7 +41,6 @@ function campaignSettings(settings: Settings) {
     campaign_body_min: settings.campaign_body_min,
     campaign_time: settings.campaign_time,
     campaign_auto_plan: settings.campaign_auto_plan,
-    campaign_auto_publish: settings.campaign_auto_publish,
     campaign_start_date: settings.campaign_start_date,
     campaign_batch_images: settings.campaign_batch_images,
     campaign_points_per_post: settings.campaign_points_per_post,
@@ -219,10 +218,6 @@ export async function PUT(request: Request) {
 
     patch.campaign_enabled = bit(body.campaign_enabled, current.campaign_enabled);
     patch.campaign_auto_plan = bit(body.campaign_auto_plan, current.campaign_auto_plan);
-    patch.campaign_auto_publish = bit(
-      body.campaign_auto_publish,
-      current.campaign_auto_publish
-    );
     if (body.campaign_name !== undefined) {
       const name = String(body.campaign_name).trim().slice(0, 30);
       if (!name) return fail("活动名称不能为空");

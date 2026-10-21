@@ -57,10 +57,6 @@ export interface Post {
   publishedDate: string | null;
   coverImageId: string | null;
   note: string;
-  autoPublish: boolean;
-  publishError: string | null;
-  publishAttemptedAt: string | null;
-  publishAttemptCount: number;
   xhsUrl: string | null;
   createdAt: string;
   updatedAt: string;
@@ -110,8 +106,6 @@ export interface Settings {
   default_time: string;
   posts_per_day: string;
   auto_analyze: string;
-  xhs_scheduler: string;
-  xhs_headless: string;
   campaign_enabled: string;
   campaign_name: string;
   campaign_city: string;
@@ -126,7 +120,6 @@ export interface Settings {
   campaign_body_min: string;
   campaign_time: string;
   campaign_auto_plan: string;
-  campaign_auto_publish: string;
   campaign_start_date: string;
   campaign_buffer_days: string;
   campaign_batch_images: string;
@@ -140,60 +133,6 @@ export interface Settings {
 }
 
 export type SettingsInput = Partial<Settings>;
-
-export type PlatformRange = "7" | "30";
-
-export interface PlatformMetrics {
-  period: string;
-  exposure: string;
-  views: string;
-  coverCtr: string;
-  averageWatch: string;
-  totalWatch: string;
-  completion: string;
-  likes: string;
-  comments: string;
-  collects: string;
-  shares: string;
-  netFollowers: string;
-  newFollowers: string;
-  unfollows: string;
-  homepageVisitors: string;
-}
-
-export interface PlatformDiagnosisItem {
-  label: string;
-  value: string;
-  percentile: number | null;
-}
-
-export interface PlatformNoteRow {
-  title: string;
-  publishedAt: string;
-  exposure: string;
-  views: string;
-  coverCtr: string;
-  likes: string;
-  comments: string;
-  collects: string;
-  follows: string;
-  shares: string;
-  avgWatch: string;
-  danmaku: string;
-}
-
-export interface PlatformFans {
-  range: string;
-  total: number;
-  newFans: number;
-  lostFans: number;
-  male: number | null;
-  female: number | null;
-  interests: string[];
-  regionNote: string;
-  sourceNote: string;
-  activeNote: string;
-}
 
 export type CampaignProgressPhase =
   | "idle"
@@ -217,26 +156,6 @@ export interface CampaignProgress {
   startedAt: string | null;
   updatedAt: string | null;
   error: string | null;
-}
-
-export interface PlatformSnapshot {
-  syncedAt: string;
-  account: {
-    following: number;
-    followers: number;
-    likesCollects: number;
-    noteCount: number;
-    status: string;
-  };
-  metrics: {
-    "7": PlatformMetrics;
-    "30": PlatformMetrics;
-  };
-  diagnosis: PlatformDiagnosisItem[];
-  notes: PlatformNoteRow[];
-  notesTotal: number;
-  fans: PlatformFans;
-  warnings?: string[];
 }
 
 

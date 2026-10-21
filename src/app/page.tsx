@@ -8,7 +8,6 @@ import {
   ArrowRight,
   ArrowUpRight,
   CalendarDays,
-  AlertTriangle,
   Images,
   Send,
   Sparkles,
@@ -40,7 +39,6 @@ type Stats = {
     ready: number;
     published: number;
     publishedThisMonth: number;
-    failed: number;
     dueToday: number;
     overdue: number;
     unscheduled: number;
@@ -66,13 +64,6 @@ export default function DashboardPage() {
     fetcher,
     { revalidateOnFocus: false }
   );
-  const { data: xhs } = useSWR<{
-    loggedIn: boolean | null;
-    profileExists: boolean;
-  }>("/api/xhs/status", fetcher, {
-    revalidateOnFocus: false,
-    refreshInterval: 10000,
-  });
 
   const [hello, setHello] = useState("你好");
   const [generateOpen, setGenerateOpen] = useState(false);
@@ -191,22 +182,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {xhs && (xhs.loggedIn === false || !xhs.profileExists) && (
-        <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 sm:flex-row sm:items-center">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
-            <AlertTriangle size={15} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-amber-900">小红书未连接</p>
-            <p className="mt-0.5 text-xs leading-relaxed text-amber-800/80">
-              自动发布不会执行。登录一次后，发布中心会显示今日队列和失败重试。
-            </p>
-          </div>
-          <Link href="/settings" className="shrink-0 rounded-full bg-amber-900 px-4 py-2 text-xs font-medium text-white transition hover:bg-amber-950">
-            去登录
-          </Link>
-        </div>
-      )}
 
       <section className="card p-5 sm:p-6">
         <SectionHeading
@@ -241,18 +216,10 @@ export default function DashboardPage() {
             hint={
               stats?.posts.overdue
                 ? `另有 ${stats.posts.overdue} 篇已逾期`
-                : "到点自动发布或手动处理"
+                : "按排期手动发布"
             }
             tone={(stats?.posts.dueToday ?? 0) > 0 ? "brand" : "stone"}
             icon={<Clock size={15} />}
-            href="/publish"
-          />
-          <TaskCard
-            label="发布失败"
-            value={stats?.posts.failed ?? 0}
-            hint="查看截图，人工核对后再重试"
-            tone={(stats?.posts.failed ?? 0) > 0 ? "red" : "emerald"}
-            icon={<AlertTriangle size={15} />}
             href="/publish"
           />
         </div>
@@ -568,7 +535,7 @@ export default function DashboardPage() {
                 </button>
               ))}
               <div className="flex items-center gap-1.5 px-2 pt-2 text-[10px] text-muted">
-                <Send size={11} /> 到点自动发布或去发布中心手动处理
+                <Send size={11} /> 按排期手动发布，或去发布中心查看队列
               </div>
             </div>
           ) : (

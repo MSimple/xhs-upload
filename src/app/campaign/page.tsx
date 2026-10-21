@@ -37,7 +37,6 @@ type CampaignSettings = {
   campaign_body_min: string;
   campaign_time: string;
   campaign_auto_plan: string;
-  campaign_auto_publish: string;
   campaign_start_date: string;
   campaign_batch_images: string;
   campaign_points_per_post: string;
@@ -209,14 +208,6 @@ export default function CampaignPage() {
   const [announcementText, setAnnouncementText] = useState("");
   const [announcementTouched, setAnnouncementTouched] = useState(false);
   const [parsingAnnouncement, setParsingAnnouncement] = useState(false);
-  const { data: xhs } = useSWR<{
-    loggedIn: boolean | null;
-    publishing: boolean;
-    profileExists: boolean;
-  }>("/api/xhs/status", fetcher, {
-    revalidateOnFocus: false,
-    refreshInterval: 60_000,
-  });
 
   const enabled = form?.campaign_enabled === "1";
   const canPlan = Boolean(
@@ -570,29 +561,7 @@ export default function CampaignPage() {
         </div>
       )}
 
-      {form.campaign_auto_publish === "1" && (
-        <div className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-          <p className="leading-relaxed">
-            自动发布只能拦截配图不足、字数不足、话题不完整这类硬性不合规，
-            无法判断 AI 痕迹。活动规则明确禁止 AI 痕迹，建议发布前人工改写文案，
-            否则可能不计积分或取消活动资格。
-          </p>
-        </div>
-      )}
 
-      {xhs && xhs.loggedIn === false && (
-        <div className="mb-5 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
-          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-          <p className="leading-relaxed">
-            小红书当前未登录，自动发布不会执行。请到
-            <Link href="/settings" className="mx-1 font-medium underline">
-              设置
-            </Link>
-            扫码登录。
-          </p>
-        </div>
-      )}
 
       <Tabs
         className="mb-5"
@@ -683,14 +652,6 @@ export default function CampaignPage() {
               }
               label="自动补齐队列"
               description="未来可发布篇数低于储备周数时，自动调用 AI 生成下一批。"
-            />
-            <Switch
-              checked={form.campaign_auto_publish === "1"}
-              onChange={(value) =>
-                patch("campaign_auto_publish", value ? "1" : "0")
-              }
-              label="生成后自动发布"
-              description="关闭后只生成草稿。活动明确禁止 AI 痕迹，发布前请人工改写并确认合规。"
             />
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

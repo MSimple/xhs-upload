@@ -14,7 +14,6 @@ import {
   ImagePlus,
   Megaphone,
   Play,
-  Send,
   Sparkles,
   Star,
   Trash2,
@@ -32,7 +31,6 @@ import {
 import {
   cn,
   fullCopy,
-  formatCN,
   formatDateTime,
   parseHashtags,
   todayStr,
@@ -57,7 +55,6 @@ type Draft = {
   coverImageId: string | null;
   images: string[];
   note: string;
-  autoPublish: boolean;
 };
 
 function toDraft(post: Post): Draft {
@@ -71,7 +68,6 @@ function toDraft(post: Post): Draft {
     coverImageId: post.coverImageId,
     images: post.images.map((image) => image.id),
     note: post.note,
-    autoPublish: post.autoPublish,
   };
 }
 
@@ -118,10 +114,6 @@ export function PostDetailModal({
     }
   );
   const post = data?.post;
-  const { data: settingsData } = useSWR<{
-    settings: { default_time: string };
-  }>(open ? "/api/settings" : null, fetcher, { revalidateOnFocus: false });
-  const defaultTime = settingsData?.settings?.default_time || "19:30";
 
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -193,9 +185,7 @@ export function PostDetailModal({
       hashtags,
     });
     if (contentErrors.length) throw new Error(contentErrors.join("；"));
-    const nextStatus =
-      status ||
-      (draft.autoPublish && post?.status === "draft" ? "ready" : undefined);
+    const nextStatus = status;
     await api(`/api/posts/${postId}`, {
       method: "PATCH",
       body: JSON.stringify({
@@ -208,7 +198,6 @@ export function PostDetailModal({
         coverImageId: draft.coverImageId,
         note: draft.note,
         images: draft.images,
-        autoPublish: draft.autoPublish,
         ...(nextStatus ? { status: nextStatus } : {}),
       }),
     });
@@ -262,36 +251,9 @@ export function PostDetailModal({
         body: JSON.stringify({ published: true, url: url?.trim() || undefined }),
       });
       await refreshAll();
-      toast("已标记发布，配图已锁定", "success");
+      toast("已标记为手动发布，配图已锁定", "success");
     } catch (error) {
       toast(error instanceof Error ? error.message : "操作失败", "error");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function handleAutoPublish() {
-    if (!draft || !postId) return;
-    if (!draft.images.length) {
-      toast("先添加至少一张配图再发布", "error");
-      return;
-    }
-    if (
-      !window.confirm(
-        "将立即打开浏览器，把这篇笔记自动发布到小红书。\n\n程序会上传原图、填写标题、正文和标签，然后点击发布。过程中请不要关闭页面或浏览器。确认继续？"
-      )
-    ) {
-      return;
-    }
-    setBusy("auto");
-    try {
-      await saveDraft();
-      await api(`/api/posts/${postId}/auto-publish`, { method: "POST" });
-      await refreshAll();
-      toast("已自动发布到小红书，配图已锁定", "success");
-    } catch (error) {
-      await refreshAll().catch(() => {});
-      toast(error instanceof Error ? error.message : "自动发布失败", "error");
     } finally {
       setBusy(null);
     }
@@ -301,7 +263,7 @@ export function PostDetailModal({
     if (!postId) return;
     if (
       !window.confirm(
-        "仅把本地状态改回「待发布」，不会删除已经发布到小红书的笔记。\n\n配图会重新变为可用。继续？"
+        "仅把本地状态改回「待发布」，不会删除小红书上已经发布的笔记。\n\n配图会重新变为可用。继续？"
       )
     ) {
       return;
@@ -574,7 +536,7 @@ export function PostDetailModal({
                   className="btn-secondary btn-sm"
                 >
                   {busy === "unpublish" ? <Spinner size={14} /> : <Undo2 size={14} />}
-                  撤回发布
+                  撤回标记
                 </button>
               ) : (
                 <>
@@ -595,28 +557,11 @@ export function PostDetailModal({
                   <button
                     onClick={handlePublish}
                     disabled={working}
-                    title="已经手动在小红书发布过了，只更新作品状态"
-                    className="btn-ghost btn-sm"
-                  >
-                    {busy === "publish" ? <Spinner size={14} /> : null}
-                    手动标记
-                  </button>
-                  <button
-                    onClick={handleAutoPublish}
-                    disabled={working || !draft.images.length}
-                    title={
-                      draft.images.length
-                        ? "自动上传图片并发布到小红书"
-                        : "先添加至少一张配图再发布"
-                    }
+                    title="已经在小红书手动发布过了，只更新作品状态"
                     className="btn-primary btn-sm"
                   >
-                    {busy === "auto" ? (
-                      <Spinner size={14} />
-                    ) : (
-                      <Send size={14} />
-                    )}
-                    {busy === "auto" ? "正在发布…" : "自动发布"}
+                    {busy === "publish" ? <Spinner size={14} /> : <Check size={14} />}
+                    标记已手动发布
                   </button>
                 </>
               )}
@@ -896,11 +841,6 @@ export function PostDetailModal({
                     <Megaphone size={10} /> {post.eventName}
                   </Link>
                 )}
-                {!isPublished && post.autoPublish && post.status === "ready" && (
-                  <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-medium text-brand">
-                    到点自动
-                  </span>
-                )}
                 <span className="text-[11px] text-muted">
                   {isPublished ? "素材已锁定" : "素材已为此作品预留"}
                 </span>
@@ -936,39 +876,6 @@ export function PostDetailModal({
               </div>
             )}
 
-            {busy === "auto" && (
-              <div className="flex items-start gap-2 rounded-2xl border border-brand/20 bg-brand-soft/40 p-3.5 text-[11px] leading-relaxed text-brand">
-                <Spinner size={14} className="mt-0.5 shrink-0" />
-                正在自动发布：打开小红书、上传
-                {isVideoPost ? "视频/动图" : ` ${draft.images.length} 张图片`}
-                并填写文案，约需 30 秒到几分钟，请保持页面打开。
-              </div>
-            )}
-
-            {post.publishError && !isPublished && (
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-3.5 text-[11px] leading-relaxed text-red-600">
-                <p className="font-medium">
-                  上次自动发布失败
-                  {post.publishAttemptCount > 0
-                    ? `（已尝试 ${post.publishAttemptCount} 次）`
-                    : ""}
-                </p>
-                <p className="mt-1 break-words">{post.publishError}</p>
-                <a
-                  href={`/api/posts/${post.id}/screenshot`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-2 inline-flex items-center gap-1 font-medium underline underline-offset-2"
-                >
-                  查看失败截图 <ExternalLink size={10} />
-                </a>
-                {post.publishAttemptCount >= 3 && (
-                  <p className="mt-1">
-                    自动重试已达上限，请人工核对小红书后台后再重试。
-                  </p>
-                )}
-              </div>
-            )}
 
             <div>
               <div className="mb-1.5 flex items-center justify-between">
@@ -1097,43 +1004,6 @@ export function PostDetailModal({
               </div>
             </div>
 
-            <label
-              className={cn(
-                "flex cursor-pointer items-start gap-3 rounded-2xl border p-3.5 transition",
-                draft.autoPublish
-                  ? "border-brand/30 bg-brand-soft/40"
-                  : "border-line bg-paper/40"
-              )}
-            >
-              <input
-                type="checkbox"
-                checked={draft.autoPublish}
-                disabled={isPublished}
-                onChange={(event) =>
-                  update("autoPublish", event.target.checked)
-                }
-                className="mt-0.5 h-4 w-4 accent-[#ff2e4d]"
-              />
-              <span className="min-w-0">
-                <span className="flex items-center gap-1.5 text-sm font-medium">
-                  到点自动发布
-                </span>
-                <span className="mt-0.5 block text-[10px] leading-relaxed text-muted">
-                  {draft.autoPublish
-                    ? draft.scheduledDate
-                      ? `保存后将在 ${formatCN(draft.scheduledDate)} ${
-                          draft.scheduledTime || defaultTime
-                        } 自动发布，需要保持服务运行。`
-                      : "还缺少发布日期，设置日期后才会进入自动发布队列。"
-                    : "开启并保存后，到排期时间会自动上传图片、填写文案并发布到小红书。"}
-                </span>
-                {draft.autoPublish && !draft.scheduledDate && (
-                  <span className="mt-1 block text-[10px] font-medium text-red-500">
-                    请先设置计划发布日期
-                  </span>
-                )}
-              </span>
-            </label>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
@@ -1165,14 +1035,12 @@ export function PostDetailModal({
                 发布流程
               </p>
               <ol className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-muted">
-                <li>1. 先在设置里登录小红书账号，只需要登录一次。</li>
-                <li>2. 点「自动发布」，程序会上传原图、填写标题正文和标签。</li>
-                <li>
-                  3. 成功后自动变为已发布并锁定配图；失败可看提示重试，或用「手动标记」兜底。
-                </li>
+                <li>1. 复制文案，或导出包含原图的发布包。</li>
+                <li>2. 到小红书发布页手动上传、粘贴并发布。</li>
+                <li>3. 回到这里点「标记已手动发布」，可顺手粘贴笔记链接。</li>
               </ol>
               <p className="mt-2 text-[10px] leading-relaxed text-muted/80">
-                自动发布依赖本机 Edge/Chrome，服务需要保持运行。
+                标记后作品会锁定配图，并计入已发布数据。
               </p>
             </div>
 

@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["node:sqlite", "playwright-core"],
+  serverExternalPackages: ["node:sqlite"],
 };
 
 export default nextConfig;

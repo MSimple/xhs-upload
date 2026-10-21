@@ -215,7 +215,6 @@ export async function runCampaignPlan(
       30
     );
     const startDate = resolveStartDate(options.startDate, settings);
-    const autoPublish = settings.campaign_auto_publish === "1";
     const maxBatches = Math.max(1, options.maxBatches ?? (options.all ? 3 : 1));
     const maxPosts = Math.max(
       1,
@@ -340,12 +339,11 @@ export async function runCampaignPlan(
               plan.hashtags
             ),
             campaign,
-            status: autoPublish ? "ready" : "draft",
+            status: "draft",
             scheduledDate: dates[index] || startDate,
             scheduledTime: settings.campaign_time || plan.publishTime,
             coverImageId: plan.coverImageId,
             note: `活动「${campaign}」· ${plan.reason}`,
-            autoPublish,
             images: plan.imageIds,
           })
         );

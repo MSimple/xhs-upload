@@ -137,14 +137,6 @@ export async function PATCH(
       }
     }
 
-    if (has(body, "autoPublish")) {
-      if (typeof body.autoPublish !== "boolean") {
-        errors.push("自动发布开关格式不正确");
-      } else {
-        patch.autoPublish = body.autoPublish;
-      }
-    }
-
     let imageIds = existing.images.map((image) => image.id);
     if (has(body, "images")) {
       if (!Array.isArray(body.images)) {

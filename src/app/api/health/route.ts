@@ -4,7 +4,6 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import { DATA_DIR, UPLOAD_DIR } from "@/lib/db";
 import { getAiConfig } from "@/lib/ai";
-import { findBrowserPath, hasXhsProfile, SCREENSHOT_DIR } from "@/lib/xhs";
 
 export const runtime = "nodejs";
 
@@ -65,10 +64,6 @@ export async function GET() {
             200
           ),
     },
-    browser: {
-      path: findBrowserPath(),
-      profileExists: hasXhsProfile(),
-    },
     ai: {
       configured: ai.enabled,
       baseUrl: ai.baseUrl,
@@ -81,7 +76,6 @@ export async function GET() {
       dbBytes: fileSize(dbFile),
       walBytes: fileSize(`${dbFile}-wal`),
       uploadBytes: dirSize(UPLOAD_DIR),
-      screenshotBytes: dirSize(SCREENSHOT_DIR),
     },
     auth: {
       required: Boolean((process.env.XHS_ACCESS_TOKEN || "").trim()),

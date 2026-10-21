@@ -11,9 +11,6 @@ import {
   LogOut,
   Monitor,
   PlugZap,
-  QrCode,
-  RefreshCw,
-  Send,
   ShieldCheck,
   Sparkles,
   TriangleAlert,
@@ -22,7 +19,7 @@ import {
 import { Spinner, Tabs } from "@/components/ui";
 import { useToast } from "@/components/toast";
 import { api, fetcher } from "@/lib/client";
-import { cn, formatBytes, formatDateTime } from "@/lib/utils";
+import { cn, formatBytes } from "@/lib/utils";
 import type { Settings } from "@/lib/types";
 
 type SettingsResponse = {
@@ -31,27 +28,15 @@ type SettingsResponse = {
   configured: boolean;
 };
 
-type XhsStatus = {
-  loggedIn: boolean | null;
-  loginInProgress: boolean;
-  publishing: boolean;
-  profileExists: boolean;
-  browserPath: string | null;
-  lastError: string | null;
-  lastCheckedAt: string | null;
-};
-
 type HealthResponse = {
   node: { version: string; ok: boolean; required: string };
   ffmpeg: { path: string; ok: boolean; version: string; error: string };
-  browser: { path: string | null; profileExists: boolean };
   ai: { configured: boolean; hasKey: boolean };
   storage: {
     dataDir: string;
     dbBytes: number;
     walBytes: number;
     uploadBytes: number;
-    screenshotBytes: number;
   };
   auth: { required: boolean };
 };
@@ -92,15 +77,6 @@ export default function SettingsPage() {
   const { data, mutate } = useSWR<SettingsResponse>("/api/settings", fetcher, {
     revalidateOnFocus: false,
   });
-  const { data: xhs, mutate: mutateXhs } = useSWR<XhsStatus>(
-    "/api/xhs/status",
-    fetcher,
-    {
-      revalidateOnFocus: false,
-      refreshInterval: (latest) =>
-        latest?.loginInProgress ? 2500 : latest?.publishing ? 3000 : 0,
-    }
-  );
   const { data: health } = useSWR<HealthResponse>("/api/health", fetcher, {
     revalidateOnFocus: false,
   });
@@ -111,7 +87,6 @@ export default function SettingsPage() {
   );
 
   const [form, setForm] = useState<Settings | null>(null);
-  const [xhsBusy, setXhsBusy] = useState<string | null>(null);
   const [keyInput, setKeyInput] = useState("");
   const [hasKey, setHasKey] = useState(false);
   const [showKey, setShowKey] = useState(false);
@@ -122,7 +97,7 @@ export default function SettingsPage() {
   >("idle");
   const [saveError, setSaveError] = useState("");
   const [dirty, setDirty] = useState(false);
-  const [tab, setTab] = useState<"account" | "ai" | "persona" | "environment">("account");
+  const [tab, setTab] = useState<"ai" | "persona" | "environment">("ai");
   const [testResult, setTestResult] = useState<{
     ok: boolean;
     text: string;
@@ -325,53 +300,6 @@ export default function SettingsPage() {
     }
   }
 
-  async function loginXhs() {
-    setXhsBusy("login");
-    try {
-      const res = await api<{ status: XhsStatus }>("/api/xhs/login", {
-        method: "POST",
-      });
-      await mutateXhs(res.status, { revalidate: false });
-      toast("已打开浏览器，请在弹出的窗口中登录小红书", "info");
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "打开登录窗口失败", "error");
-    } finally {
-      setXhsBusy(null);
-    }
-  }
-
-  async function checkXhs() {
-    setXhsBusy("check");
-    try {
-      const res = await api<{ status: XhsStatus }>("/api/xhs/check", {
-        method: "POST",
-      });
-      await mutateXhs(res.status, { revalidate: false });
-      toast(
-        res.status.loggedIn ? "小红书登录有效" : "未登录或登录已过期",
-        res.status.loggedIn ? "success" : "error"
-      );
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "检测失败", "error");
-    } finally {
-      setXhsBusy(null);
-    }
-  }
-
-  async function logout() {
-    if (!window.confirm("退出小红书登录？下次自动发布前需要重新登录。")) return;
-    setXhsBusy("logout");
-    try {
-      await api("/api/xhs/logout", { method: "POST" });
-      await mutateXhs();
-      toast("已退出小红书登录", "success");
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "退出失败", "error");
-    } finally {
-      setXhsBusy(null);
-    }
-  }
-
   async function logoutAccess() {
     if (!window.confirm("退出当前访问令牌？下次进入需要重新输入。")) return;
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
@@ -380,39 +308,6 @@ export default function SettingsPage() {
 
   const enabled = form.ai_enabled === "1";
   const configured = hasKey && enabled;
-
-  let xhsLabel = "尚未登录";
-  let xhsDot = "bg-stone-400";
-  let xhsHint =
-    "点「登录小红书」打开浏览器窗口，用手机号或扫码登录一次，之后会自动复用登录状态。";
-  if (xhs?.publishing) {
-    xhsLabel = "正在自动发布";
-    xhsDot = "bg-brand";
-    xhsHint = "浏览器正在操作小红书发布页，请稍候。";
-  } else if (xhs?.loginInProgress) {
-    xhsLabel = "等待登录中";
-    xhsDot = "bg-amber-500";
-    xhsHint =
-      "请在弹出的浏览器窗口里完成登录，登录成功后这里会自动变成已连接。";
-  } else if (xhs?.loggedIn) {
-    xhsLabel = "已连接，可自动发布";
-    xhsDot = "bg-emerald-500";
-    xhsHint =
-      "登录状态保存在本机。到点自动发布需要保持这个服务进程运行。";
-  } else if (xhs?.loggedIn === false) {
-    xhsLabel = "未登录或登录已过期";
-    xhsDot = "bg-red-500";
-    xhsHint = "重新打开登录窗口登录一次即可。";
-  } else if (xhs?.profileExists) {
-    xhsLabel = "登录状态未检测";
-    xhsDot = "bg-stone-400";
-    xhsHint = "本机已有登录记录，点「检测状态」确认是否仍然有效。";
-  }
-  if (xhs && !xhs.browserPath) {
-    xhsLabel = "未找到可用浏览器";
-    xhsDot = "bg-red-500";
-    xhsHint = "请安装 Edge 或 Chrome，或设置环境变量 XHS_BROWSER_PATH。";
-  }
 
   return (
     <div>
@@ -425,7 +320,7 @@ export default function SettingsPage() {
             设置
           </h1>
           <p className="mt-1 text-sm text-muted">
-            配置 AI 模型和账号人设，修改后自动保存。
+            配置 AI 模型和内容人设，修改后自动保存。
           </p>
         </div>
         <div
@@ -470,114 +365,14 @@ export default function SettingsPage() {
         className="mb-5"
         value={tab}
         onChange={(value) =>
-          setTab(value as "account" | "ai" | "persona" | "environment")
+          setTab(value as "ai" | "persona" | "environment")
         }
         items={[
-          { value: "account", label: "账号与发布" },
           { value: "ai", label: "AI 模型" },
           { value: "persona", label: "内容人设" },
           { value: "environment", label: "环境与数据" },
         ]}
       />
-
-      <section className={cn("card mb-5 overflow-hidden", tab !== "account" && "hidden")}>
-        <div className="flex flex-col gap-5 p-5 sm:p-6 lg:flex-row lg:items-center">
-          <div className="flex min-w-0 flex-1 items-start gap-3.5">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-soft text-brand">
-              <Send size={18} />
-            </span>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="font-display text-lg font-semibold">
-                  小红书自动发布
-                </h2>
-                <span className="chip py-0.5">
-                  <span className={cn("h-1.5 w-1.5 rounded-full", xhsDot)} />
-                  {xhsLabel}
-                </span>
-              </div>
-              <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-muted">
-                {xhsHint}
-              </p>
-              {xhs?.lastError && (
-                <p className="mt-1 max-w-2xl text-[10px] leading-relaxed text-red-500">
-                  {xhs.lastError}
-                </p>
-              )}
-              {xhs?.lastCheckedAt && (
-                <p className="mt-1 text-[10px] text-muted/70">
-                  上次检测 {formatDateTime(xhs.lastCheckedAt)}
-                  {xhs.browserPath ? ` · ${xhs.browserPath}` : ""}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 lg:shrink-0">
-            <button
-              onClick={loginXhs}
-              disabled={Boolean(xhsBusy) || Boolean(xhs?.publishing)}
-              className="btn-primary btn-sm"
-            >
-              {xhsBusy === "login" ? (
-                <Spinner size={14} />
-              ) : (
-                <QrCode size={14} />
-              )}
-              {xhs?.loggedIn ? "重新登录" : "登录小红书"}
-            </button>
-            <button
-              onClick={checkXhs}
-              disabled={Boolean(xhsBusy) || Boolean(xhs?.loginInProgress)}
-              className="btn-secondary btn-sm"
-            >
-              {xhsBusy === "check" ? (
-                <Spinner size={14} />
-              ) : (
-                <RefreshCw size={14} />
-              )}
-              检测状态
-            </button>
-            {xhs?.profileExists && (
-              <button
-                onClick={logout}
-                disabled={Boolean(xhsBusy)}
-                className="btn-ghost btn-sm text-red-500 hover:bg-red-50 hover:text-red-600"
-              >
-                {xhsBusy === "logout" ? (
-                  <Spinner size={14} />
-                ) : (
-                  <LogOut size={14} />
-                )}
-                退出登录
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 border-t border-line bg-paper/40 px-5 py-4 sm:grid-cols-2 sm:px-6">
-          <ToggleRow
-            label="到点自动发布"
-            description="开启总开关后，作品详情里勾选了「到点自动发布」且已到发布时间的作品会自动发出。"
-            checked={form.xhs_scheduler === "1"}
-            onChange={(checked) =>
-              update("xhs_scheduler", checked ? "1" : "0")
-            }
-          />
-          <ToggleRow
-            label="发布时隐藏浏览器窗口"
-            description="开启后后台静默发布；如果经常遇到验证失败，可以关掉它观察发布过程。"
-            checked={form.xhs_headless === "1"}
-            onChange={(checked) => update("xhs_headless", checked ? "1" : "0")}
-          />
-        </div>
-
-        <p className="border-t border-line px-5 py-2.5 text-[10px] leading-relaxed text-muted sm:px-6">
-          <Monitor size={11} className="mr-1 inline" />
-          所有修改会自动保存；每篇作品还需要在详情里开启「到点自动发布」。
-          自动发布依赖本机浏览器，服务需要保持运行。
-        </p>
-      </section>
 
       <div
         className={cn(
@@ -588,7 +383,7 @@ export default function SettingsPage() {
         <div
           className={cn(
             "space-y-5",
-            (tab === "account" || tab === "environment") && "hidden"
+            tab === "environment" && "hidden"
           )}
         >
           <section className={cn("card p-5 sm:p-6", tab !== "ai" && "hidden")}>
@@ -923,18 +718,11 @@ export default function SettingsPage() {
                       : "未找到"}
                   </span>
                 </li>
-                <li className="flex items-center justify-between gap-2">
-                  <span className="text-muted">浏览器</span>
-                  <span className={health.browser.path ? "text-emerald-600" : "text-red-500"}>
-                    {health.browser.path ? "已找到" : "未找到"}
-                  </span>
-                </li>
-                <li className="flex items-center justify-between gap-2">
-                  <span className="text-muted">数据库 / 上传 / 截图</span>
+                                <li className="flex items-center justify-between gap-2">
+                  <span className="text-muted">数据库 / 上传</span>
                   <span className="text-ink/70">
                     {formatBytes(health.storage.dbBytes + health.storage.walBytes)} /{" "}
-                    {formatBytes(health.storage.uploadBytes)} /{" "}
-                    {formatBytes(health.storage.screenshotBytes)}
+                    {formatBytes(health.storage.uploadBytes)}
                   </span>
                 </li>
               </ul>
@@ -969,68 +757,11 @@ export default function SettingsPage() {
             </p>
             <ul className="mt-3 space-y-1.5 text-[11px] leading-relaxed text-muted">
               <li>· 迁移或备份时，复制整个 data 目录即可</li>
-              <li>· 登录 Cookie 保存在 data/xhs-profile/，只在本机使用</li>
-              <li>· 自动发布失败时的页面截图保存在 data/publish-shots/</li>
             </ul>
           </section>
 
-          <section
-            className={cn(
-              "rounded-3xl border border-brand/15 bg-brand-soft/40 p-5",
-              tab !== "account" && "hidden"
-            )}
-          >
-            <p className="flex items-center gap-2 text-sm font-medium text-brand">
-              <Sparkles size={15} /> 自动发布说明
-            </p>
-            <p className="mt-2 text-[11px] leading-relaxed text-ink/70">
-              程序会用本机浏览器登录你的小红书创作账号，自动上传原图、填写标题正文和标签，再点击发布。
-              发布成功后作品会变为「已发布」，配图自动锁定。
-              如果小红书更新页面或触发安全验证，可以先切换为显示浏览器窗口，或使用手动发布作为兜底。
-            </p>
-          </section>
         </div>
       </div>
-    </div>
-  );
-}
-
-function ToggleRow({
-  label,
-  description,
-  checked,
-  onChange,
-}: {
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4 rounded-2xl bg-white/70 px-3.5 py-3">
-      <div>
-        <p className="text-xs font-medium">{label}</p>
-        <p className="mt-0.5 text-[10px] leading-relaxed text-muted">
-          {description}
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={() => onChange(!checked)}
-        aria-pressed={checked}
-        aria-label={label}
-        className={cn(
-          "relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition",
-          checked ? "bg-brand" : "bg-line"
-        )}
-      >
-        <span
-          className={cn(
-            "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all",
-            checked ? "left-[18px]" : "left-0.5"
-          )}
-        />
-      </button>
     </div>
   );
 }

@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import useSWR from "swr";
 import {
   ArrowUpRight,
-  BarChart3,
   CalendarDays,
   Camera,
   FileText,
@@ -80,18 +79,6 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
-    label: "数据洞察",
-    items: [
-      {
-        href: "/insights",
-        label: "数据看板",
-        short: "数据",
-        description: "账号指标、笔记与粉丝",
-        icon: BarChart3,
-      },
-    ],
-  },
-  {
     label: "系统",
     items: [
       {
@@ -138,12 +125,6 @@ const MOBILE_MORE: NavItem[] = [
     icon: Camera,
   },
   {
-    href: "/insights",
-    label: "数据看板",
-    description: "账号指标、笔记明细与粉丝画像",
-    icon: BarChart3,
-  },
-  {
     href: "/settings",
     label: "设置",
     description: "账号与发布、AI 模型、环境与数据",
@@ -183,13 +164,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { data } = useSWR<{
     configured: boolean;
     hasApiKey: boolean;
-    settings: { xhs_scheduler: string };
   }>(isLogin ? null : "/api/settings", fetcher, {
     revalidateOnFocus: false,
   });
   const configured = data?.configured ?? false;
   const settingsLoading = !data;
-  const schedulerOn = data?.settings?.xhs_scheduler === "1";
 
   const { data: campaignProgress } = useSWR<{ progress: CampaignProgress }>(
     isLogin ? null : "/api/campaign/progress",
@@ -197,16 +176,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { revalidateOnFocus: false, refreshInterval: 5000 }
   );
 
-  const { data: xhsStatus } = useSWR<{
-    loggedIn: boolean | null;
-    loginInProgress: boolean;
-    publishing: boolean;
-    syncing: boolean;
-    profileExists: boolean;
-  }>(isLogin ? null : "/api/xhs/status", fetcher, {
-    revalidateOnFocus: false,
-    refreshInterval: 5000,
-  });
 
   if (isLogin) {
     return <div className="min-h-screen">{children}</div>;
@@ -223,24 +192,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     ? "图片识别与文案生成已配置"
     : "配置模型后开启真实图片识别";
 
-  let xhsLabel = "小红书未登录";
-  let xhsDot = "bg-stone-300";
-  if (xhsStatus?.publishing) {
-    xhsLabel = "正在发布";
-    xhsDot = "bg-brand";
-  } else if (xhsStatus?.loginInProgress) {
-    xhsLabel = "等待登录";
-    xhsDot = "bg-amber-500";
-  } else if (xhsStatus?.loggedIn === true) {
-    xhsLabel = "小红书已连接";
-    xhsDot = "bg-emerald-500";
-  } else if (xhsStatus?.loggedIn === false) {
-    xhsLabel = "登录已失效";
-    xhsDot = "bg-red-500";
-  } else if (xhsStatus?.profileExists) {
-    xhsLabel = "登录待检测";
-    xhsDot = "bg-amber-500";
-  }
 
   const progress = campaignProgress?.progress;
   let activeTask: { href: string; title: string; detail: string } | null = null;
@@ -260,24 +211,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         ? `剩余 ${progress.remaining} 张素材`
         : "正在处理";
     activeTask = { href: "/campaign", title, detail };
-  } else if (xhsStatus?.publishing) {
-    activeTask = {
-      href: "/publish",
-      title: "正在自动发布笔记",
-      detail: "发布到小红书",
-    };
-  } else if (xhsStatus?.syncing) {
-    activeTask = {
-      href: "/insights",
-      title: "正在同步创作数据",
-      detail: "读取创作中心",
-    };
-  } else if (xhsStatus?.loginInProgress) {
-    activeTask = {
-      href: "/settings",
-      title: "等待小红书登录",
-      detail: "请在浏览器窗口完成",
-    };
   }
 
   const moreActive = MOBILE_MORE.some((item) =>
@@ -352,13 +285,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
             <span className="font-medium text-ink">{modeLabel}</span>
             <Settings size={12} className="ml-auto text-muted" />
-          </Link>
-          <Link href="/settings" className="flex items-center gap-2 text-xs">
-            <span className={cn("h-2 w-2 rounded-full", xhsDot)} />
-            <span className="font-medium text-ink">{xhsLabel}</span>
-            <span className="ml-auto text-[9px] text-muted">
-              {schedulerOn ? "自动发布开" : "自动发布关"}
-            </span>
           </Link>
           <p className="text-[10px] leading-relaxed text-muted">{modeHint}</p>
         </div>
