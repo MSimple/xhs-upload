@@ -398,6 +398,118 @@ async function dismissOverlays(page: Page) {
   }
 }
 
+async function waitForUploadedMedia(
+  page: Page,
+  expected: number,
+  isVideoNote: boolean
+) {
+  const started = Date.now();
+  const timeout = isVideoNote ? 300_000 : 180_000;
+  const minimumWaitMs = 2000;
+  const mediaLabel = isVideoNote ? "视频" : "图片";
+  let readySince = 0;
+  let lastState = "";
+  console.log(`[xhs] waiting for ${expected} ${mediaLabel} to finish uploading`);
+
+  while (Date.now() - started < timeout) {
+    const state = await page
+      .evaluate(({ expectedCount, video }) => {
+        const isVisible = (element: Element) => {
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            style.display !== "none" &&
+            style.visibility !== "hidden"
+          );
+        };
+        const bodyText = document.body.innerText || "";
+        const previews = video
+          ? Array.from(document.querySelectorAll("video")).filter(isVisible)
+          : Array.from(
+              document.querySelectorAll(".img-upload-area img.preview")
+            ).filter(isVisible);
+        const uploading = Array.from(
+          document.querySelectorAll(".mask.uploading")
+        ).filter(isVisible).length;
+        const maskErrors = Array.from(
+          document.querySelectorAll(".mask")
+        )
+          .filter(isVisible)
+          .map((element) => (element.textContent || "").trim())
+          .filter((text) => /(上传失败|处理失败|重新上传)/.test(text));
+        const submit = document.querySelector("xhs-publish-btn");
+        const previewsComplete =
+          previews.length > 0 &&
+          previews.every((element) => {
+            if (element instanceof HTMLVideoElement) {
+              return element.readyState >= 2;
+            }
+            const image = element as HTMLImageElement;
+            return image.complete && image.naturalWidth > 0;
+          });
+        return {
+          bodyError: /(上传失败|图片处理失败|视频处理失败)/.test(bodyText),
+          maskErrors,
+          previewCount: previews.length,
+          previewsComplete,
+          submitDisabled: submit?.getAttribute("submit-disabled") === "true",
+          submitting: submit?.getAttribute("submit-loading") === "true",
+          uploading,
+          expectedCount,
+        };
+      }, { expectedCount: expected, video: isVideoNote })
+      .catch(() => null);
+
+    if (!state) {
+      await sleep(500);
+      continue;
+    }
+
+    lastState = `${state.previewCount}/${state.expectedCount} ${mediaLabel}，${
+      state.uploading
+    } 个仍在处理`;
+    if (state.bodyError || state.maskErrors.length) {
+      throw new Error(
+        `${mediaLabel}上传失败，已停止发布：${
+          state.maskErrors[0] || "小红书提示上传失败"
+        }`
+      );
+    }
+
+    const countReady = state.previewCount >= state.expectedCount;
+    const allReady =
+      countReady &&
+      state.uploading === 0 &&
+      state.previewsComplete &&
+      !state.submitDisabled &&
+      !state.submitting;
+
+    if (allReady) {
+      if (!readySince) readySince = Date.now();
+      if (
+        Date.now() - readySince >= 1500 &&
+        Date.now() - started >= minimumWaitMs
+      ) {
+        console.log(
+          `[xhs] ${mediaLabel}上传完成 ${state.previewCount}/${state.expectedCount}，耗时 ${
+            Date.now() - started
+          }ms`
+        );
+        return;
+      }
+    } else {
+      readySince = 0;
+    }
+    await sleep(300);
+  }
+
+  throw new Error(
+    `${mediaLabel}上传超时（${lastState || "没有检测到上传进度"}）。为避免只发出部分${mediaLabel}，已停止发布，请检查网络后重试`
+  );
+}
+
 type AxButtonBox = {
   x: number;
   y: number;
@@ -826,7 +938,7 @@ async function doPublish(post: Post): Promise<string | null> {
       timeout: isVideoNote ? 300_000 : 180_000,
     });
     console.log("[xhs] editor ready");
-    await sleep(1200);
+    await waitForUploadedMedia(page, files.length, isVideoNote);
     await dismissOverlays(page);
 
     const title = post.title || "生活里的小美好";
@@ -870,7 +982,7 @@ async function doPublish(post: Post): Promise<string | null> {
       throw new Error("标题没有填写成功，已停止发布");
     }
 
-    await sleep(1500);
+    await waitForUploadedMedia(page, files.length, isVideoNote);
     await dismissOverlays(page);
 
     let apiSuccess = false;
