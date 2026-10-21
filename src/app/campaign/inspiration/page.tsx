@@ -91,6 +91,11 @@ function checklistText(ideas: ShotIdea[], campaign: string) {
   return lines.join("\n");
 }
 
+function normalizeCount(value: string | number) {
+  const parsed = Math.floor(Number(value));
+  return Number.isFinite(parsed) ? Math.min(20, Math.max(1, parsed)) : 8;
+}
+
 function priorityStyle(priority: number) {
   if (priority === 1) return "bg-red-50 text-red-600 border-red-100";
   if (priority === 3) return "bg-stone-100 text-stone-500 border-stone-200";
@@ -128,13 +133,15 @@ export default function InspirationPage() {
   const gaps = data?.gaps || [];
 
   async function generate() {
+    const safeCount = normalizeCount(count);
+    setCount(String(safeCount));
     setBusy(true);
     setWarnings([]);
     try {
       const res = await api<InspirationResponse>("/api/campaign/inspiration", {
         method: "POST",
         body: JSON.stringify({
-          count: Number(count),
+          count: safeCount,
           category: category || undefined,
           city,
           focus: focus.trim() || undefined,
@@ -481,17 +488,19 @@ export default function InspirationPage() {
           </div>
           <div>
             <label className="label">生成数量</label>
-            <select
+            <input
+              type="number"
+              min={1}
+              max={20}
+              step={1}
+              inputMode="numeric"
+              aria-label="生成数量"
               value={count}
               onChange={(event) => setCount(event.target.value)}
+              onBlur={() => setCount(String(normalizeCount(count)))}
               className="field"
-            >
-              {[6, 8, 10, 12].map((value) => (
-                <option key={value} value={value}>
-                  {value} 条
-                </option>
-              ))}
-            </select>
+            />
+            <p className="mt-1 text-[10px] text-muted">1-20 条，可手动输入</p>
           </div>
           <div className="flex items-end gap-2">
             <button

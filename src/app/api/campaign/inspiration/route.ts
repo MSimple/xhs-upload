@@ -75,7 +75,7 @@ export async function POST(request: Request) {
     const { settings, campaign } = currentCampaign();
     if (!campaign) return fail("请先在创作营里设置活动名称");
 
-    const count = Math.min(12, Math.max(1, Number(body.count) || 8));
+    const count = Math.min(20, Math.max(1, Number(body.count) || 8));
     const category =
       body.category && isShotCategory(body.category) ? body.category : undefined;
     const city = (body.city ?? settings.campaign_city ?? "").trim().slice(0, 20);
