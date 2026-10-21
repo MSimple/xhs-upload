@@ -779,6 +779,7 @@ export async function generateShotIdeas(
 语言风格：${settings.tone}
 拍摄城市：${options.city || "未填写，用「就近」描述地点"}
 本次重点：${options.category || "不限分类"}${options.focus ? `；额外要求：${options.focus}` : ""}
+如果提供了同行参考，只学习标题钩子、叙事结构和画面组织，不照抄原句、不复制他人故事。
 
 现有素材摘要（避免重复拍同样的画面）：
 ${existing.length ? existing.map((item) => `- ${item}`).join("\n") : "暂无"}

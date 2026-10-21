@@ -30,7 +30,7 @@ function currentCampaign() {
 }
 
 function summary() {
-  const { campaign, city } = currentCampaign();
+  const { settings, campaign, city } = currentCampaign();
   const images = listImages();
   const coverage = analyzeShotCoverage(images).sort(
     (a, b) => a.count - b.count
@@ -38,6 +38,11 @@ function summary() {
   return {
     campaign,
     city,
+    searchKeyword: (
+      settings.campaign_official_topic ||
+      settings.campaign_model ||
+      campaign
+    ).trim(),
     configured: getAiConfig().enabled,
     ideas: listShotIdeas(campaign),
     coverage,
@@ -63,6 +68,7 @@ export async function POST(request: Request) {
       category?: string;
       city?: string;
       focus?: string;
+      references?: string;
       replace?: boolean;
     }>(request);
 
@@ -73,6 +79,16 @@ export async function POST(request: Request) {
     const category =
       body.category && isShotCategory(body.category) ? body.category : undefined;
     const city = (body.city ?? settings.campaign_city ?? "").trim().slice(0, 20);
+    const references = (body.references || "").trim().slice(0, 5000);
+    const focus = [
+      body.focus?.trim(),
+      references
+        ? `参考同行笔记（只学习结构、标题钩子和画面，不要照抄原句）：\n${references}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n")
+      .slice(0, 8000);
 
     if (city !== settings.campaign_city) {
       saveSettings({ campaign_city: city });
@@ -107,7 +123,7 @@ export async function POST(request: Request) {
         city,
         count,
         category,
-        focus: body.focus?.trim().slice(0, 200),
+        focus,
         existingSummaries,
         existingTitles,
         gaps,

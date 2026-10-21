@@ -6,9 +6,11 @@ import useSWR from "swr";
 import {
   Aperture,
   ArrowLeft,
+  BookOpen,
   Camera,
   Check,
   Copy,
+  ExternalLink,
   Lightbulb,
   MapPin,
   Package,
@@ -35,6 +37,7 @@ type Coverage = {
 type InspirationResponse = {
   campaign: string;
   city: string;
+  searchKeyword: string;
   configured: boolean;
   ideas: ShotIdea[];
   coverage: Coverage[];
@@ -107,6 +110,7 @@ export default function InspirationPage() {
   const [category, setCategory] = useState("");
   const [count, setCount] = useState("8");
   const [focus, setFocus] = useState("");
+  const [references, setReferences] = useState("");
   const [busy, setBusy] = useState(false);
   const [warnings, setWarnings] = useState<string[]>([]);
 
@@ -117,6 +121,10 @@ export default function InspirationPage() {
   const ideas = useMemo(() => data?.ideas || [], [data]);
   const pending = ideas.filter((idea) => !idea.done);
   const done = ideas.length - pending.length;
+  const nextIdea =
+    [...pending].sort(
+      (a, b) => a.priority - b.priority || a.createdAt.localeCompare(b.createdAt)
+    )[0] || null;
   const gaps = data?.gaps || [];
 
   async function generate() {
@@ -130,6 +138,7 @@ export default function InspirationPage() {
           category: category || undefined,
           city,
           focus: focus.trim() || undefined,
+          references: references.trim() || undefined,
         }),
       });
       setWarnings(res.warnings || []);
@@ -193,6 +202,15 @@ export default function InspirationPage() {
     }
   }
 
+  async function copyOne(idea: ShotIdea) {
+    try {
+      await copyText(checklistText([idea], data?.campaign || "拍摄任务"));
+      toast("这条拍摄任务已复制", "success");
+    } catch {
+      toast("复制失败，请手动选择文本", "error");
+    }
+  }
+
   if (isLoading || !data) {
     return (
       <div className="space-y-4">
@@ -240,6 +258,69 @@ export default function InspirationPage() {
           </button>
         </div>
       </header>
+
+      {nextIdea ? (
+        <section className="mb-5 overflow-hidden rounded-3xl border border-brand/15 bg-gradient-to-br from-brand-soft/60 via-white to-amber-50/50 p-5 shadow-soft sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.2em] text-brand">
+                <Sparkles size={12} /> 今天只拍这一条
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="chip">{nextIdea.category}</span>
+                <span
+                  className={cn(
+                    "rounded-full border px-2 py-0.5 text-[10px]",
+                    priorityStyle(nextIdea.priority)
+                  )}
+                >
+                  P{nextIdea.priority}
+                </span>
+                <span className="text-[10px] text-muted">
+                  {data.gaps.includes(nextIdea.category)
+                    ? `优先补「${nextIdea.category}」缺口`
+                    : `补强「${nextIdea.category}」素材`}
+                </span>
+              </div>
+              <h2 className="mt-2 font-display text-2xl tracking-tight sm:text-[28px]">
+                {nextIdea.title}
+              </h2>
+              <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-ink/70">
+                {nextIdea.subject}
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-x-5 gap-y-1.5 sm:grid-cols-2">
+                <Row icon={<MapPin size={12} />} label="地点" value={nextIdea.location} />
+                <Row
+                  icon={<Aperture size={12} />}
+                  label="机位"
+                  value={nextIdea.composition}
+                />
+                <Row icon={<Sun size={12} />} label="光线" value={nextIdea.lighting} />
+                <Row icon={<Package size={12} />} label="道具" value={nextIdea.props} />
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <button
+                onClick={() => copyOne(nextIdea)}
+                className="btn-secondary btn-sm"
+              >
+                <Copy size={13} /> 复制这条
+              </button>
+              <button
+                onClick={() => toggle(nextIdea)}
+                className="btn-primary btn-sm"
+              >
+                <Check size={13} /> 这条拍完了
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : (
+        <section className="mb-5 flex items-center gap-3 rounded-3xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm text-emerald-700">
+          <Check size={16} />
+          今天的拍摄任务都完成了。可以继续生成一批，或者去素材库整理今天拍的图。
+        </section>
+      )}
 
       <div className="mb-5 grid grid-cols-1 gap-4 xl:grid-cols-[1.25fr_1fr]">
         <section className="card p-5 sm:p-6">
@@ -313,6 +394,42 @@ export default function InspirationPage() {
             <Sparkles size={12} className="text-brand" />
             {data.configured ? "AI 拍摄编导" : "内置灵感库"}
           </span>
+        </div>
+
+        <div className="mb-4 rounded-2xl border border-line bg-paper/40 p-3.5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="flex items-center gap-1.5 text-xs font-medium">
+                <BookOpen size={13} className="text-brand" /> 同行参考（可选）
+              </p>
+              <p className="mt-1 max-w-2xl text-[10px] leading-relaxed text-muted">
+                打开小红书搜「{data.searchKeyword || data.campaign}」，挑 3-5
+                条点赞高的同行笔记，把标题、正文前两句和标签粘进来。AI
+                会学它们的结构，结合你的素材缺口给拍摄任务。
+              </p>
+            </div>
+            <a
+              href={`https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(
+                data.searchKeyword || data.campaign
+              )}`}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-secondary btn-sm shrink-0"
+            >
+              <ExternalLink size={13} /> 去小红书找参考
+            </a>
+          </div>
+          <textarea
+            value={references}
+            onChange={(event) => setReferences(event.target.value)}
+            rows={3}
+            maxLength={5000}
+            placeholder="粘贴同行笔记的标题、正文和标签。可以一次贴 3-5 条，用空行分开。"
+            className="field mt-3 resize-none text-[11px] leading-relaxed"
+          />
+          <p className="mt-1.5 text-[10px] leading-relaxed text-muted/80">
+            只学习标题钩子、叙事顺序和画面组织，不照抄原句；参考越多，生成的任务越具体。
+          </p>
         </div>
 
         <div className="mb-3 flex flex-wrap gap-1.5">
