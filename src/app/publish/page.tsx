@@ -6,6 +6,9 @@ import useSWR from "swr";
 import {
   ArrowRight,
   CalendarDays,
+  CheckCircle2,
+  Copy,
+  Download,
   ExternalLink,
   Images,
   RefreshCw,
@@ -14,11 +17,43 @@ import {
 import {
   EmptyState,
   SectionHeading,
+  Spinner,
 } from "@/components/ui";
 import { PostDetailModal } from "@/components/post-detail";
-import { fetcher, refreshAll } from "@/lib/client";
-import { cn, addDays, formatCN, formatDateTime, todayStr } from "@/lib/utils";
+import { useToast } from "@/components/toast";
+import { api, downloadPostExport, fetcher, refreshAll } from "@/lib/client";
+import {
+  cn,
+  addDays,
+  formatCN,
+  formatDateTime,
+  fullCopy,
+  parseHashtags,
+  todayStr,
+} from "@/lib/utils";
 import type { Post } from "@/lib/types";
+
+const PUBLISH_URL =
+  "https://creator.xiaohongshu.com/publish/publish?source=official&target=image";
+const PUBLISH_VIDEO_URL =
+  "https://creator.xiaohongshu.com/publish/publish?source=official&target=video";
+
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(area);
+    return ok;
+  }
+}
 
 function sortQueue(posts: Post[]) {
   return [...posts].sort((a, b) =>
@@ -124,7 +159,7 @@ export default function PublishPage() {
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
         <StatusCard
-          label="今日待发"
+          label="待处理"
           value={`${todayDue}`}
           hint={
             overdue.length
@@ -182,6 +217,7 @@ export default function PublishPage() {
                     post={post}
                     today={today}
                     onOpen={openPost}
+                    onRefresh={refresh}
                   />
                 ))}
               </div>
@@ -218,6 +254,7 @@ export default function PublishPage() {
                       post={post}
                       today={today}
                       onOpen={openPost}
+                      onRefresh={refresh}
                     />
                   ))}
                 </div>
@@ -348,18 +385,78 @@ function QueueRow({
   post,
   today,
   onOpen,
+  onRefresh,
 }: {
   post: Post;
   today: string;
   onOpen: (id: string) => void;
+  onRefresh: () => void | Promise<void>;
 }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState<"copy" | "export" | "mark" | null>(null);
   const overdue = Boolean(post.scheduledDate && post.scheduledDate < today);
   const isToday = post.scheduledDate === today;
+  const isVideo = post.mediaType === "video";
+
+  async function copy() {
+    setBusy("copy");
+    try {
+      const ok = await copyText(
+        fullCopy({
+          title: post.title,
+          body: post.body,
+          hashtags: parseHashtags(post.hashtags.join(" ")),
+        })
+      );
+      toast(ok ? "标题、正文和标签已复制" : "复制失败，请打开作品手动选择", ok ? "success" : "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function exportPack() {
+    setBusy("export");
+    try {
+      await downloadPostExport(post.id);
+      toast("发布包已下载，包含文案和原图", "success");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "导出失败", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function markPublished() {
+    const url = window.prompt(
+      "已经在小红书手动发布了吗？可粘贴笔记链接（留空也可以）",
+      post.xhsUrl || ""
+    );
+    if (url === null) return;
+    setBusy("mark");
+    try {
+      await api(`/api/posts/${post.id}/publish`, {
+        method: "POST",
+        body: JSON.stringify({ published: true, url: url.trim() || undefined }),
+      });
+      await onRefresh();
+      toast("已标记为手动发布，配图已锁定", "success");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "标记失败", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onOpen(post.id)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") onOpen(post.id);
+      }}
       className={cn(
-        "group flex w-full items-center gap-3 rounded-2xl border p-2.5 text-left transition hover:border-brand/25 hover:bg-paper/40",
+        "group flex w-full flex-col gap-2 rounded-2xl border p-2.5 text-left transition hover:border-brand/25 hover:bg-paper/40 sm:flex-row sm:items-center",
         overdue
           ? "border-red-100 bg-red-50/30"
           : isToday
@@ -367,39 +464,83 @@ function QueueRow({
           : "border-line bg-white"
       )}
     >
-      <Cover post={post} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{post.title}</p>
-        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted">
-          <span>
-            {post.scheduledDate
-              ? `${formatCN(post.scheduledDate)} ${
-                  post.scheduledTime || "时间待定"
-                }`
-              : "未排期"}
-          </span>
-          <span>· {post.images.length} 图</span>
-          {post.eventName && <span>· {post.eventName}</span>}
-          {post.campaign && <span>· {post.campaign}</span>}
-        </p>
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <Cover post={post} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{post.title}</p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted">
+            <span>
+              {post.scheduledDate
+                ? `${formatCN(post.scheduledDate)} ${post.scheduledTime || "时间待定"}`
+                : "未排期"}
+            </span>
+            <span>· {post.images.length} 图</span>
+            {post.eventName && <span>· {post.eventName}</span>}
+            {post.campaign && <span>· {post.campaign}</span>}
+          </p>
+        </div>
       </div>
-      <span
-        className={cn(
-          "shrink-0 rounded-full px-2 py-0.5 text-[10px]",
-          overdue
-            ? "bg-red-100 text-red-600"
-            : isToday
-            ? "bg-brand-soft text-brand"
-            : "bg-paper text-muted"
-        )}
+
+      <div
+        className="flex shrink-0 flex-wrap items-center gap-1.5 sm:justify-end"
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
       >
-        {overdue ? "已逾期" : isToday ? "今天" : "待发"}
-      </span>
-      <ArrowRight
-        size={14}
-        className="shrink-0 text-muted/40 transition group-hover:text-ink"
-      />
-    </button>
+        <span
+          className={cn(
+            "mr-1 rounded-full px-2 py-0.5 text-[10px]",
+            overdue
+              ? "bg-red-100 text-red-600"
+              : isToday
+              ? "bg-brand-soft text-brand"
+              : "bg-paper text-muted"
+          )}
+        >
+          {overdue ? "已逾期" : isToday ? "今天" : "待发"}
+        </span>
+        <button
+          type="button"
+          onClick={copy}
+          disabled={Boolean(busy)}
+          title="复制标题、正文和标签"
+          aria-label="复制文案"
+          className="flex h-7 w-7 items-center justify-center rounded-full border border-line bg-white text-muted transition hover:border-brand/30 hover:text-brand disabled:opacity-40"
+        >
+          {busy === "copy" ? <Spinner size={12} /> : <Copy size={12} />}
+        </button>
+        <button
+          type="button"
+          onClick={exportPack}
+          disabled={Boolean(busy)}
+          title="下载发布包（文案 + 原图）"
+          aria-label="导出发布包"
+          className="flex h-7 w-7 items-center justify-center rounded-full border border-line bg-white text-muted transition hover:border-brand/30 hover:text-brand disabled:opacity-40"
+        >
+          {busy === "export" ? <Spinner size={12} /> : <Download size={12} />}
+        </button>
+        <a
+          href={isVideo ? PUBLISH_VIDEO_URL : PUBLISH_URL}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => event.stopPropagation()}
+          title="打开小红书发布页"
+          aria-label="打开小红书发布页"
+          className="flex h-7 w-7 items-center justify-center rounded-full border border-line bg-white text-muted transition hover:border-brand/30 hover:text-brand"
+        >
+          <ExternalLink size={12} />
+        </a>
+        <button
+          type="button"
+          onClick={markPublished}
+          disabled={Boolean(busy)}
+          title="已经在小红书发布，更新本地状态"
+          className="flex h-7 items-center gap-1 rounded-full border border-brand/20 bg-brand-soft/50 px-2.5 text-[10px] font-medium text-brand transition hover:bg-brand-soft disabled:opacity-40"
+        >
+          {busy === "mark" ? <Spinner size={12} /> : <CheckCircle2 size={12} />}
+          标记已发布
+        </button>
+      </div>
+    </div>
   );
 }
 

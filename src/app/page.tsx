@@ -211,14 +211,18 @@ export default function DashboardPage() {
             href="/calendar"
           />
           <TaskCard
-            label="今日待发"
-            value={stats?.posts.dueToday ?? 0}
+            label="待处理"
+            value={(stats?.posts.dueToday ?? 0) + (stats?.posts.overdue ?? 0)}
             hint={
               stats?.posts.overdue
-                ? `另有 ${stats.posts.overdue} 篇已逾期`
+                ? `今天 ${stats.posts.dueToday} 篇 · 逾期 ${stats.posts.overdue} 篇`
                 : "按排期手动发布"
             }
-            tone={(stats?.posts.dueToday ?? 0) > 0 ? "brand" : "stone"}
+            tone={
+              (stats?.posts.dueToday ?? 0) + (stats?.posts.overdue ?? 0) > 0
+                ? "brand"
+                : "stone"
+            }
             icon={<Clock size={15} />}
             href="/publish"
           />
