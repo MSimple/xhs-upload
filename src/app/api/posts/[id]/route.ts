@@ -3,6 +3,7 @@ import { deletePost, getImage, getPost, updatePost } from "@/lib/db";
 import { fail, readJson } from "@/lib/api";
 import {
   charLength,
+  isHttpUrl,
   isPostStatus,
   isValidDateString,
   isValidTimeString,
@@ -134,6 +135,17 @@ export async function PATCH(
         errors.push("备注最多 2000 个字");
       } else {
         patch.note = body.note;
+      }
+    }
+
+    if (has(body, "xhsUrl")) {
+      const value = body.xhsUrl;
+      if (value === null || value === "" || value === undefined) {
+        patch.xhsUrl = null;
+      } else if (typeof value !== "string" || !isHttpUrl(value)) {
+        errors.push("小红书笔记链接格式不正确");
+      } else {
+        patch.xhsUrl = value.trim();
       }
     }
 

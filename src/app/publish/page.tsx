@@ -66,10 +66,12 @@ function sortQueue(posts: Post[]) {
 }
 
 export default function PublishPage() {
+  const toast = useToast();
   const today = todayStr();
   const weekEnd = addDays(today, 7);
   const [postId, setPostId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [editingLink, setEditingLink] = useState<string | null>(null);
 
   const {
     data: postsData,
@@ -130,6 +132,27 @@ export default function PublishPage() {
 
   async function refresh() {
     await Promise.all([mutatePosts(), refreshAll()]);
+  }
+
+  async function editLink(post: Post) {
+    const url = window.prompt(
+      "粘贴小红书笔记链接（留空可清除）",
+      post.xhsUrl || ""
+    );
+    if (url === null) return;
+    setEditingLink(post.id);
+    try {
+      await api(`/api/posts/${post.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ xhsUrl: url.trim() || null }),
+      });
+      await refresh();
+      toast(url.trim() ? "笔记链接已更新" : "笔记链接已清除", "success");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "更新链接失败", "error");
+    } finally {
+      setEditingLink(null);
+    }
   }
 
   return (
@@ -293,18 +316,35 @@ export default function PublishPage() {
                             : post.publishedDate || "已发布"}
                         </p>
                       </div>
-                      {post.xhsUrl ? (
-                        <a
-                          href={post.xhsUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex shrink-0 items-center gap-1 text-[10px] font-medium text-brand hover:underline"
+                      <div className="flex shrink-0 items-center gap-2">
+                        {post.xhsUrl ? (
+                          <a
+                            href={post.xhsUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-1 text-[10px] font-medium text-brand hover:underline"
+                          >
+                            打开 <ExternalLink size={11} />
+                          </a>
+                        ) : (
+                          <span className="text-[10px] text-muted">无链接</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => editLink(post)}
+                          disabled={editingLink === post.id}
+                          title="编辑小红书笔记链接"
+                          className="rounded-full border border-line px-2 py-0.5 text-[10px] text-muted transition hover:border-brand/30 hover:text-brand disabled:opacity-40"
                         >
-                          打开 <ExternalLink size={11} />
-                        </a>
-                      ) : (
-                        <span className="text-[10px] text-muted">无链接</span>
-                      )}
+                          {editingLink === post.id ? (
+                            <Spinner size={10} />
+                          ) : post.xhsUrl ? (
+                            "改链接"
+                          ) : (
+                            "填链接"
+                          )}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

@@ -259,6 +259,29 @@ export function PostDetailModal({
     }
   }
 
+  async function handleEditLink() {
+    if (!postId) return;
+    const url = window.prompt(
+      "粘贴小红书笔记链接（留空可清除）",
+      post?.xhsUrl || ""
+    );
+    if (url === null) return;
+    setBusy("link");
+    try {
+      await api(`/api/posts/${postId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ xhsUrl: url.trim() || null }),
+      });
+      await mutate();
+      await refreshAll();
+      toast(url.trim() ? "笔记链接已更新" : "笔记链接已清除", "success");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "更新链接失败", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function handleUnpublish() {
     if (!postId) return;
     if (
@@ -844,15 +867,30 @@ export function PostDetailModal({
                 <span className="text-[11px] text-muted">
                   {isPublished ? "素材已锁定" : "素材已为此作品预留"}
                 </span>
-                {isPublished && post.xhsUrl && (
-                  <a
-                    href={post.xhsUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-[11px] text-brand hover:underline"
-                  >
-                    查看小红书笔记 <ExternalLink size={10} />
-                  </a>
+                {isPublished && (
+                  <>
+                    {post.xhsUrl ? (
+                      <a
+                        href={post.xhsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] text-brand hover:underline"
+                      >
+                        查看小红书笔记 <ExternalLink size={10} />
+                      </a>
+                    ) : (
+                      <span className="text-[11px] text-muted">
+                        还没有填笔记链接
+                      </span>
+                    )}
+                    <button
+                      onClick={handleEditLink}
+                      disabled={working}
+                      className="text-[11px] text-brand hover:underline disabled:opacity-50"
+                    >
+                      {post.xhsUrl ? "编辑链接" : "添加链接"}
+                    </button>
+                  </>
                 )}
               </div>
               <button
